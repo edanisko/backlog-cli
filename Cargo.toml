@@ -1,6 +1,6 @@
 [package]
 name = "backlog-cli"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 authors = ["Ed Anisko"]
 description = "A simple, fast backlog manager for your git repos with an interactive TUI"

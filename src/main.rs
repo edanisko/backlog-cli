@@ -93,7 +93,16 @@ fn get_repo_root() -> Option<PathBuf> {
 
 fn get_repo_backlog_path() -> Option<PathBuf> {
     let repo_root = get_repo_root()?;
-    Some(repo_root.join(".todo").join("backlog.json"))
+    let new_dir = repo_root.join(".backlog");
+    let old_dir = repo_root.join(".todo");
+
+    // Migrate .todo to .backlog if old exists and new doesn't
+    if old_dir.exists() && !new_dir.exists() && fs::rename(&old_dir, &new_dir).is_err() {
+        // If rename fails, fall back to old path
+        return Some(old_dir.join("backlog.json"));
+    }
+
+    Some(new_dir.join("backlog.json"))
 }
 
 fn get_global_dir() -> PathBuf {
@@ -782,7 +791,16 @@ fn main() {
                 }
 
                 for repo_path in &index.repos {
-                    let backlog_file = PathBuf::from(repo_path).join(".todo").join("backlog.json");
+                    let repo = PathBuf::from(repo_path);
+                    let new_dir = repo.join(".backlog");
+                    let old_dir = repo.join(".todo");
+
+                    // Migrate .todo to .backlog if old exists and new doesn't
+                    if old_dir.exists() && !new_dir.exists() {
+                        let _ = fs::rename(&old_dir, &new_dir);
+                    }
+
+                    let backlog_file = new_dir.join("backlog.json");
                     let backlog = load_backlog(&backlog_file);
 
                     let pending: Vec<_> = backlog.items.iter().filter(|i| !i.done).collect();

@@ -78,11 +78,11 @@ Launch with `backlog cli` for a full-screen interactive experience.
 | Key | Action |
 |-----|--------|
 | `j` / `k` / `↑` / `↓` | Navigate up/down |
-| `Page Up` / `Page Down` | Scroll by page |
 | `Enter` | Select item and output to stdout |
 | `a` | Add new item |
 | `x` | Toggle done/undone |
 | `e` | Edit item text |
+| `h` | Hide/show completed items |
 | `K` / `J` (shift) | Move item up/down |
 | `dd` | Delete immediately |
 | `Delete` / `Backspace` | Delete with confirmation |
