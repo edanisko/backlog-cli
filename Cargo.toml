@@ -1,6 +1,6 @@
 [package]
-name = "backlog"
-version = "0.2.0"
+name = "backlog-cli"
+version = "0.2.1"
 edition = "2024"
 authors = ["Ed Anisko"]
 description = "A simple, fast backlog manager for your git repos with an interactive TUI"
@@ -10,6 +10,10 @@ homepage = "https://github.com/edanisko/backlog"
 readme = "README.md"
 keywords = ["cli", "todo", "backlog", "tui", "productivity"]
 categories = ["command-line-utilities"]
+
+[[bin]]
+name = "backlog"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
