@@ -167,7 +167,8 @@ struct App {
     edit_buffer: String,
     edit_cursor: usize,
     output: Option<String>,
-    pending_d: bool, // for dd delete
+    pending_d: bool,      // for dd delete
+    hide_completed: bool, // toggle to hide completed items
 }
 
 impl App {
@@ -182,6 +183,39 @@ impl App {
             edit_cursor: 0,
             output: None,
             pending_d: false,
+            hide_completed: false,
+        }
+    }
+
+    /// Returns indices of visible items based on hide_completed setting
+    fn visible_indices(&self) -> Vec<usize> {
+        self.backlog
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| !self.hide_completed || !item.done)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Converts a visible index to the actual backlog index
+    fn visible_to_actual(&self, visible_idx: usize) -> Option<usize> {
+        self.visible_indices().get(visible_idx).copied()
+    }
+
+    /// Converts an actual backlog index to a visible index
+    fn actual_to_visible(&self, actual_idx: usize) -> Option<usize> {
+        self.visible_indices().iter().position(|&i| i == actual_idx)
+    }
+
+    fn toggle_hide_completed(&mut self) {
+        self.hide_completed = !self.hide_completed;
+        // Adjust selection if current selection is no longer visible
+        let visible = self.visible_indices();
+        if visible.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= visible.len() {
+            self.selected = visible.len() - 1;
         }
     }
 
@@ -196,45 +230,65 @@ impl App {
     }
 
     fn move_down(&mut self) {
-        if !self.backlog.items.is_empty() && self.selected < self.backlog.items.len() - 1 {
+        let visible_count = self.visible_indices().len();
+        if visible_count > 0 && self.selected < visible_count - 1 {
             self.selected += 1;
         }
     }
 
     fn toggle_done(&mut self) {
-        if !self.backlog.items.is_empty() {
-            self.backlog.items[self.selected].done = !self.backlog.items[self.selected].done;
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            self.backlog.items[actual_idx].done = !self.backlog.items[actual_idx].done;
             let _ = self.save();
+            // If we just completed an item and hide_completed is on, adjust selection
+            if self.hide_completed && self.backlog.items[actual_idx].done {
+                let visible = self.visible_indices();
+                if visible.is_empty() {
+                    self.selected = 0;
+                } else if self.selected >= visible.len() {
+                    self.selected = visible.len() - 1;
+                }
+            }
         }
     }
 
     fn move_item_up(&mut self) {
-        if self.selected > 0 {
-            self.backlog.items.swap(self.selected, self.selected - 1);
-            self.selected -= 1;
-            let _ = self.save();
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            if actual_idx > 0 {
+                self.backlog.items.swap(actual_idx, actual_idx - 1);
+                // Update selection to follow the item
+                if let Some(new_visible_idx) = self.actual_to_visible(actual_idx - 1) {
+                    self.selected = new_visible_idx;
+                }
+                let _ = self.save();
+            }
         }
     }
 
     fn move_item_down(&mut self) {
-        if !self.backlog.items.is_empty() && self.selected < self.backlog.items.len() - 1 {
-            self.backlog.items.swap(self.selected, self.selected + 1);
-            self.selected += 1;
-            let _ = self.save();
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            if actual_idx < self.backlog.items.len() - 1 {
+                self.backlog.items.swap(actual_idx, actual_idx + 1);
+                // Update selection to follow the item
+                if let Some(new_visible_idx) = self.actual_to_visible(actual_idx + 1) {
+                    self.selected = new_visible_idx;
+                }
+                let _ = self.save();
+            }
         }
     }
 
     fn enter_edit_mode(&mut self) {
-        if !self.backlog.items.is_empty() {
-            self.edit_buffer = self.backlog.items[self.selected].description.clone();
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            self.edit_buffer = self.backlog.items[actual_idx].description.clone();
             self.edit_cursor = self.edit_buffer.len();
             self.mode = Mode::Edit;
         }
     }
 
     fn confirm_edit(&mut self) {
-        if !self.backlog.items.is_empty() {
-            self.backlog.items[self.selected].description = self.edit_buffer.clone();
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            self.backlog.items[actual_idx].description = self.edit_buffer.clone();
             let _ = self.save();
         }
         self.mode = Mode::Normal;
@@ -245,16 +299,19 @@ impl App {
     }
 
     fn select_item(&mut self) {
-        if !self.backlog.items.is_empty() {
-            self.output = Some(self.backlog.items[self.selected].description.clone());
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            self.output = Some(self.backlog.items[actual_idx].description.clone());
         }
     }
 
     fn delete_selected(&mut self) {
-        if !self.backlog.items.is_empty() {
-            self.backlog.items.remove(self.selected);
-            if self.selected >= self.backlog.items.len() && self.selected > 0 {
-                self.selected -= 1;
+        if let Some(actual_idx) = self.visible_to_actual(self.selected) {
+            self.backlog.items.remove(actual_idx);
+            let visible = self.visible_indices();
+            if visible.is_empty() {
+                self.selected = 0;
+            } else if self.selected >= visible.len() {
+                self.selected = visible.len() - 1;
             }
             let _ = self.save();
         }
@@ -274,7 +331,9 @@ impl App {
                 created_at: Utc::now(),
                 done: false,
             });
-            self.selected = self.backlog.items.len() - 1;
+            // Select the newly added item (it's not done, so always visible)
+            let visible = self.visible_indices();
+            self.selected = visible.len() - 1;
             let _ = self.save();
         }
         self.mode = Mode::Normal;
@@ -287,24 +346,36 @@ impl App {
 
 /// A custom widget for rendering the backlog list with wrapped items
 struct BacklogList<'a> {
-    items: &'a [BacklogItem],
+    /// Visible items: (original_index, item)
+    items: Vec<(usize, &'a BacklogItem)>,
     selected: usize,
     scroll_offset: usize,
+    title: String,
+    /// When true, use sequential numbering (1, 2, 3...) instead of original indices
+    renumber: bool,
 }
 
 impl<'a> BacklogList<'a> {
-    fn new(items: &'a [BacklogItem], selected: usize, scroll_offset: usize) -> Self {
+    fn new(
+        items: Vec<(usize, &'a BacklogItem)>,
+        selected: usize,
+        scroll_offset: usize,
+        title: String,
+        renumber: bool,
+    ) -> Self {
         Self {
             items,
             selected,
             scroll_offset,
+            title,
+            renumber,
         }
     }
 }
 
 impl Widget for BacklogList<'_> {
     fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
-        let block = Block::default().borders(Borders::ALL).title("Backlog");
+        let block = Block::default().borders(Borders::ALL).title(self.title);
         let inner = block.inner(area);
         block.render(area, buf);
 
@@ -316,15 +387,22 @@ impl Widget for BacklogList<'_> {
         let text_width = inner.width.saturating_sub(prefix_width) as usize;
 
         let mut y = 0u16;
-        for (i, item) in self.items.iter().enumerate().skip(self.scroll_offset) {
+        for (visible_idx, (original_idx, item)) in
+            self.items.iter().enumerate().skip(self.scroll_offset)
+        {
             if y >= inner.height {
                 break;
             }
 
             let checkbox = if item.done { "[x]" } else { "[ ]" };
-            let prefix = format!("{}. {} ", i + 1, checkbox);
+            let display_num = if self.renumber {
+                visible_idx + 1
+            } else {
+                original_idx + 1
+            };
+            let prefix = format!("{}. {} ", display_num, checkbox);
 
-            let style = if i == self.selected {
+            let style = if visible_idx == self.selected {
                 if item.done {
                     Style::default()
                         .fg(Color::DarkGray)
@@ -445,12 +523,32 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                 .constraints(constraints.clone())
                 .split(f.area());
 
-            let list = BacklogList::new(&app.backlog.items, app.selected, app.scroll_offset);
+            // Build visible items list with original indices
+            let visible_items: Vec<(usize, &BacklogItem)> = app
+                .backlog
+                .items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !app.hide_completed || !item.done)
+                .collect();
+
+            let title = if app.hide_completed {
+                "Backlog (hiding completed)".to_string()
+            } else {
+                "Backlog".to_string()
+            };
+
+            let list = BacklogList::new(
+                visible_items,
+                app.selected,
+                app.scroll_offset,
+                title,
+                app.hide_completed,
+            );
             f.render_widget(list, chunks[0]);
 
             if has_input_box {
-                let before_cursor: String =
-                    app.edit_buffer.chars().take(app.edit_cursor).collect();
+                let before_cursor: String = app.edit_buffer.chars().take(app.edit_cursor).collect();
                 let cursor_char: String = app
                     .edit_buffer
                     .chars()
@@ -487,7 +585,9 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
             let help_text = match app.mode {
                 Mode::Edit | Mode::Add => "Enter:confirm  Esc:cancel",
                 Mode::ConfirmDelete => "Delete item? y:yes  n/Esc:cancel",
-                Mode::Normal => "a:add  j/k:nav  Enter:select  x:toggle  e:edit  dd/Del:delete  K/J:move  q:quit",
+                Mode::Normal => {
+                    "a:add  j/k:nav  x:toggle  e:edit  dd:del  K/J:move  h:hide done  q:quit"
+                }
             };
             let help_style = if app.mode == Mode::ConfirmDelete {
                 Style::default().fg(Color::Red)
@@ -543,6 +643,10 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                         }
                         (KeyCode::Char('a'), _) => {
                             app.enter_add_mode();
+                            app.pending_d = false;
+                        }
+                        (KeyCode::Char('h'), _) => {
+                            app.toggle_hide_completed();
                             app.pending_d = false;
                         }
                         (KeyCode::Char('d'), _) => {
