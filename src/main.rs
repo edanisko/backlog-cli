@@ -149,6 +149,7 @@ fn register_repo(repo_path: &str) {
 enum Mode {
     Normal,
     Edit,
+    Add,
     ConfirmDelete,
 }
 
@@ -250,6 +251,29 @@ impl App {
             }
             let _ = self.save();
         }
+        self.mode = Mode::Normal;
+    }
+
+    fn enter_add_mode(&mut self) {
+        self.edit_buffer = String::new();
+        self.edit_cursor = 0;
+        self.mode = Mode::Add;
+    }
+
+    fn confirm_add(&mut self) {
+        if !self.edit_buffer.is_empty() {
+            self.backlog.items.push(BacklogItem {
+                description: self.edit_buffer.clone(),
+                created_at: Utc::now(),
+                done: false,
+            });
+            self.selected = self.backlog.items.len() - 1;
+            let _ = self.save();
+        }
+        self.mode = Mode::Normal;
+    }
+
+    fn cancel_add(&mut self) {
         self.mode = Mode::Normal;
     }
 }
@@ -374,7 +398,8 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
 
     loop {
         terminal.draw(|f| {
-            let constraints = if app.mode == Mode::Edit {
+            let has_input_box = app.mode == Mode::Edit || app.mode == Mode::Add;
+            let constraints = if has_input_box {
                 vec![
                     Constraint::Min(3),
                     Constraint::Length(5),
@@ -392,7 +417,7 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
             let list = BacklogList::new(&app.backlog.items, app.selected);
             f.render_widget(list, chunks[0]);
 
-            if app.mode == Mode::Edit {
+            if has_input_box {
                 let before_cursor: String =
                     app.edit_buffer.chars().take(app.edit_cursor).collect();
                 let cursor_char: String = app
@@ -410,7 +435,7 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                     cursor_char
                 };
 
-                let edit_text = Line::from(vec![
+                let input_text = Line::from(vec![
                     Span::raw(before_cursor),
                     Span::styled(
                         cursor_display,
@@ -419,22 +444,19 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                     Span::raw(after_cursor),
                 ]);
 
-                let edit_box = Paragraph::new(edit_text)
+                let title = if app.mode == Mode::Add { "Add" } else { "Edit" };
+                let input_box = Paragraph::new(input_text)
                     .wrap(ratatui::widgets::Wrap { trim: false })
-                    .block(Block::default().borders(Borders::ALL).title("Edit"));
-                f.render_widget(edit_box, chunks[1]);
+                    .block(Block::default().borders(Borders::ALL).title(title));
+                f.render_widget(input_box, chunks[1]);
             }
 
-            let help_chunk = if app.mode == Mode::Edit {
-                chunks[2]
-            } else {
-                chunks[1]
-            };
+            let help_chunk = if has_input_box { chunks[2] } else { chunks[1] };
 
             let help_text = match app.mode {
-                Mode::Edit => "Enter:confirm  Esc:cancel",
+                Mode::Edit | Mode::Add => "Enter:confirm  Esc:cancel",
                 Mode::ConfirmDelete => "Delete item? y:yes  n/Esc:cancel",
-                Mode::Normal => "j/k:nav  Enter:select  x:toggle  e:edit  dd/Del:delete  K/J:move  q:quit",
+                Mode::Normal => "a:add  j/k:nav  Enter:select  x:toggle  e:edit  dd/Del:delete  K/J:move  q:quit",
             };
             let help_style = if app.mode == Mode::ConfirmDelete {
                 Style::default().fg(Color::Red)
@@ -488,6 +510,10 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                             app.enter_edit_mode();
                             app.pending_d = false;
                         }
+                        (KeyCode::Char('a'), _) => {
+                            app.enter_add_mode();
+                            app.pending_d = false;
+                        }
                         (KeyCode::Char('d'), _) => {
                             if app.pending_d {
                                 // dd - delete immediately
@@ -516,9 +542,21 @@ fn run_tui(backlog_path: PathBuf) -> io::Result<Option<String>> {
                     KeyCode::Char('n') | KeyCode::Esc => app.mode = Mode::Normal,
                     _ => {}
                 },
-                Mode::Edit => match key.code {
-                    KeyCode::Enter => app.confirm_edit(),
-                    KeyCode::Esc => app.cancel_edit(),
+                Mode::Edit | Mode::Add => match key.code {
+                    KeyCode::Enter => {
+                        if app.mode == Mode::Add {
+                            app.confirm_add();
+                        } else {
+                            app.confirm_edit();
+                        }
+                    }
+                    KeyCode::Esc => {
+                        if app.mode == Mode::Add {
+                            app.cancel_add();
+                        } else {
+                            app.cancel_edit();
+                        }
+                    }
                     KeyCode::Backspace => {
                         if app.edit_cursor > 0 {
                             let mut chars: Vec<char> = app.edit_buffer.chars().collect();
