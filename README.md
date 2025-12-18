@@ -19,6 +19,8 @@ A simple, fast backlog manager for your git repos. Track todos per-project with 
 - **Global overview** - See all your backlogs across repos from `~/.backlog/`
 - **Interactive TUI** - Navigate, edit, reorder, and manage items visually
 - **Vim-style keybindings** - `j/k` navigation, `dd` to delete, and more
+- **Scrolling support** - Page up/down for long lists
+- **Add items from TUI** - Press `a` to add new todos without leaving the interface
 - **Wrapped text** - Long items display properly with smart text wrapping
 - **Zero config** - Just install and start using it
 
@@ -27,19 +29,19 @@ A simple, fast backlog manager for your git repos. Track todos per-project with 
 ### From source (recommended)
 
 ```bash
-cargo install --git https://github.com/edanisko/backlog
+cargo install --git https://github.com/edanisko/backlog-cli
 ```
 
 ### From crates.io
 
 ```bash
-cargo install backlog
+cargo install backlog-cli
 ```
 
 ### Build from source
 
 ```bash
-git clone https://github.com/edanisko/backlog
+git clone https://github.com/edanisko/backlog-cli
 cd backlog
 cargo install --path .
 ```
@@ -76,7 +78,9 @@ Launch with `backlog cli` for a full-screen interactive experience.
 | Key | Action |
 |-----|--------|
 | `j` / `k` / `↑` / `↓` | Navigate up/down |
+| `Page Up` / `Page Down` | Scroll by page |
 | `Enter` | Select item and output to stdout |
+| `a` | Add new item |
 | `x` | Toggle done/undone |
 | `e` | Edit item text |
 | `K` / `J` (shift) | Move item up/down |
@@ -132,4 +136,4 @@ MIT
 
 ## Contributing
 
-Contributions welcome! Please open an issue or PR on [GitHub](https://github.com/edanisko/backlog).
+Contributions welcome! Please open an issue or PR on [GitHub](https://github.com/edanisko/backlog-cli).
